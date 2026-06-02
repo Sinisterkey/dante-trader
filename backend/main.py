@@ -1,11 +1,18 @@
 import logging
 import asyncio
+import json
+import imaplib
+import email
 from datetime import datetime
 from fastapi import FastAPI, Request, Header, HTTPException
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
-from config import FASTAPI_HOST, FASTAPI_PORT, LOG_LEVEL
+from config import (
+    FASTAPI_HOST, FASTAPI_PORT, LOG_LEVEL,
+    EMAIL_SIGNALS_ENABLED, IMAP_SERVER, IMAP_USER, IMAP_PASSWORD,
+    IMAP_FOLDER, EMAIL_CHECK_INTERVAL
+)
 from backend.db import TradingDatabase
 from backend.mt5_connector import MT5Connector
 from backend.chart_agent import ChartAgent
@@ -19,7 +26,11 @@ from telegram_handlers.bot import TradingTelegramBot
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("trading_bot.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -72,6 +83,10 @@ async def lifespan(app: FastAPI):
         await telegram_bot.start_bot()
     except Exception as e:
         logger.warning(f"Telegram bot initialization error: {e}")
+
+    # Start email signal listener if enabled
+    if EMAIL_SIGNALS_ENABLED:
+        asyncio.create_task(email_signal_listener())
 
     logger.info("✅ Trading Agent System ready!")
     logger.info(f"📊 Listening on {FASTAPI_HOST}:{FASTAPI_PORT}")
@@ -136,7 +151,6 @@ async def webhook_endpoint(request: Request, x_signature: str = Header(None)):
                 raise HTTPException(status_code=401, detail="Invalid signature")
 
         # Parse JSON
-        import json
         data = json.loads(body_str)
 
         # Parse signal
@@ -222,6 +236,60 @@ async def get_trade_history(limit: int = 50, symbol: str = None):
 
 
 # ==================== HELPERS ====================
+
+async def email_signal_listener():
+    """Background task to poll email for TradingView signals."""
+    logger.info("📧 Email signal listener active")
+    
+    while True:
+        try:
+            def fetch_emails():
+                signals = []
+                try:
+                    mail = imaplib.IMAP4_SSL(IMAP_SERVER)
+                    mail.login(IMAP_USER, IMAP_PASSWORD)
+                    mail.select(IMAP_FOLDER)
+                    
+                    # Search for unread emails from TradingView
+                    status, messages = mail.search(None, '(UNSEEN FROM "noreply@tradingview.com")')
+                    
+                    if status == 'OK':
+                        for num in messages[0].split():
+                            status, data = mail.fetch(num, '(RFC822)')
+                            if status == 'OK':
+                                msg = email.message_from_bytes(data[0][1])
+                                body = ""
+                                if msg.is_multipart():
+                                    for part in msg.walk():
+                                        if part.get_content_type() == "text/plain":
+                                            body = part.get_payload(decode=True).decode()
+                                            break
+                                else:
+                                    body = msg.get_payload(decode=True).decode()
+                                
+                                # Extract JSON from email body
+                                try:
+                                    start = body.find('{')
+                                    end = body.rfind('}') + 1
+                                    if start != -1 and end != -1:
+                                        signals.append(json.loads(body[start:end]))
+                                except Exception as e:
+                                    logger.error(f"Failed to parse signal from email body: {e}")
+                    mail.close()
+                    mail.logout()
+                except Exception as e:
+                    logger.error(f"IMAP Error: {e}")
+                return signals
+
+            new_signals = await asyncio.to_thread(fetch_emails)
+            for signal_data in new_signals:
+                signal = WebhookValidator.parse_webhook_signal(signal_data)
+                if signal:
+                    logger.info(f"📧 Signal received via email: {signal['symbol']} {signal['action']}")
+                    asyncio.create_task(process_signal_async(signal))
+        except Exception as e:
+            logger.error(f"Email loop error: {e}")
+        await asyncio.sleep(EMAIL_CHECK_INTERVAL)
 
 async def process_signal_async(signal: dict):
     """Process signal asynchronously."""

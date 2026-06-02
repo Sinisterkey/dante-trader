@@ -67,3 +67,11 @@ NEWS_FEED_URLS = [
 
 # Cache TTL (seconds)
 NEWS_CACHE_TTL = 3600  # 1 hour
+
+# Email Signal Configuration (Free alternative to TradingView Webhooks)
+EMAIL_SIGNALS_ENABLED = os.getenv("EMAIL_SIGNALS_ENABLED", "False").lower() == "true"
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
+IMAP_USER = os.getenv("IMAP_USER", "")
+IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "")  # Use an "App Password" for Gmail
+IMAP_FOLDER = os.getenv("IMAP_FOLDER", "INBOX")
+EMAIL_CHECK_INTERVAL = int(os.getenv("EMAIL_CHECK_INTERVAL", 30))
