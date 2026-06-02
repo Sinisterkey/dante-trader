@@ -3,10 +3,15 @@ import asyncio
 import json
 import imaplib
 import email
+import sys
+import os
 from datetime import datetime
 from fastapi import FastAPI, Request, Header, HTTPException
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+
+# Ensure the root directory is in the path for module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from config import (
     FASTAPI_HOST, FASTAPI_PORT, LOG_LEVEL,
@@ -87,6 +92,10 @@ async def lifespan(app: FastAPI):
     # Start email signal listener if enabled
     if EMAIL_SIGNALS_ENABLED:
         asyncio.create_task(email_signal_listener())
+
+    if telegram_bot:
+        from config import TELEGRAM_CHAT_ID
+        logger.info(f"🤖 Bot is listening for Chat ID: {TELEGRAM_CHAT_ID}")
 
     logger.info("✅ Trading Agent System ready!")
     logger.info(f"📊 Listening on {FASTAPI_HOST}:{FASTAPI_PORT}")
@@ -244,10 +253,12 @@ async def email_signal_listener():
     while True:
         try:
             def fetch_emails():
+            def fetch_emails_from_imap():
                 signals = []
                 try:
                     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
                     mail.login(IMAP_USER, IMAP_PASSWORD)
+                    mail.login(IMAP_USER, IMAP_PASSWORD.replace(" ", ""))
                     mail.select(IMAP_FOLDER)
                     
                     # Search for unread emails from TradingView
@@ -279,9 +290,14 @@ async def email_signal_listener():
                     mail.logout()
                 except Exception as e:
                     logger.error(f"IMAP Error: {e}")
+                    logger.error(f"📧 IMAP Error: {e}")
                 return signals
 
             new_signals = await asyncio.to_thread(fetch_emails)
+            new_signals = await asyncio.to_thread(fetch_emails_from_imap)
+            if new_signals:
+                logger.info(f"📧 Found {len(new_signals)} new signals via email")
+
             for signal_data in new_signals:
                 signal = WebhookValidator.parse_webhook_signal(signal_data)
                 if signal:
