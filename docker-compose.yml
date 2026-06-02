@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  trading-agent:
+    build: .
+    container_name: ai-trading-agent
+    ports:
+      - "8000:8000"
+    environment:
+      - MT5_LOGIN=${MT5_LOGIN}
+      - MT5_PASSWORD=${MT5_PASSWORD}
+      - MT5_SERVER=${MT5_SERVER}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - RISK_PER_TRADE=${RISK_PER_TRADE:-0.02}
+      - MIN_REWARD_RATIO=${MIN_REWARD_RATIO:-2.0}
+      - MAX_CONCURRENT_POSITIONS=${MAX_CONCURRENT_POSITIONS:-3}
+      - ACCOUNT_BALANCE=${ACCOUNT_BALANCE:-10000}
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+networks:
+  trading-network:
+    driver: bridge
