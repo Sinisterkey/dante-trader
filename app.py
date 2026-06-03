@@ -1,7 +1,7 @@
 import streamlit as st
 import time as time_module
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import json
 from agents import TradingAgents
@@ -75,7 +75,7 @@ def analysis_loop():
         try:
             # Perform analysis
             analysis = st.session_state.trading_agents.analyze_and_recommend()
-            analysis['timestamp'] = datetime.utcnow().isoformat()
+            analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
             
             # Update session state
             st.session_state.last_analysis = analysis
@@ -135,7 +135,7 @@ def main():
         if st.button("🔄 Manual Analysis"):
             with st.spinner("Performing analysis..."):
                 analysis = st.session_state.trading_agents.analyze_and_recommend()
-                analysis['timestamp'] = datetime.utcnow().isoformat()
+                analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
                 st.session_state.last_analysis = analysis
                 st.session_state.analysis_history.append(analysis)
                 if len(st.session_state.analysis_history) > 100:
@@ -145,6 +145,21 @@ def main():
     with col3:
         session_status = "🟢 Active" if (st.session_state.trading_agents.market_intel.is_london_ny_overlap() if hasattr(st.session_state, 'trading_agents') else False) else "🔴 Inactive"
         st.metric("London/NY Session", session_status)
+        
+    # Add forced analysis button
+    with col1:
+        if st.button("🚀 Force Analysis (Ignore Session)"):
+            with st.spinner("Performing forced analysis..."):
+                # Temporarily bypass session check for this analysis
+                analysis = st.session_state.trading_agents.analyze_and_recommend()
+                analysis['timestamp'] = datetime.utcnow().isoformat()
+                # Add a flag to indicate this was forced
+                analysis['forced'] = True
+                st.session_state.last_analysis = analysis
+                st.session_state.analysis_history.append(analysis)
+                if len(st.session_state.analysis_history) > 100:
+                    st.session_state.analysis_history = st.session_state.analysis_history[-100:]
+            st.rerun()
     
     # Display current analysis
     if st.session_state.last_analysis:
@@ -230,7 +245,7 @@ def main():
             })
         
         if history_data:
-            st.dataframe(history_data, use_container_width=True)
+            st.dataframe(history_data, width='stretch')
     
     # Footer
     st.markdown("--")

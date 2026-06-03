@@ -27,7 +27,7 @@ SL_MULTIPLIER = 1.5        # Stop Loss = ATR * SL_MULTIPLIER
 TP_MULTIPLIER = 2.5        # Take Profit = Risk * TP_MULTIPLIER
 
 # MT5 Configuration
-MT5_LOGIN = os.getenv("MT5_LOGIN", "12345678")
+MT5_LOGIN = int(os.getenv("MT5_LOGIN", "12345678"))
 MT5_PASSWORD = os.getenv("MT5_PASSWORD", "password")
 MT5_SERVER = os.getenv("MT5_SERVER", "MetaQuotes-Demo")
 MT5_TIMEOUT = 60000  # 60 seconds timeout
