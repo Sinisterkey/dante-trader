@@ -25,6 +25,9 @@ ATR_PERIOD = 14        # For volatility calculation
 RISK_PER_TRADE = 0.015     # 1.5% of equity per trade
 SL_MULTIPLIER = 1.5        # Stop Loss = ATR * SL_MULTIPLIER
 TP_MULTIPLIER = 2.5        # Take Profit = Risk * TP_MULTIPLIER
+MAX_CONCURRENT_POSITIONS = 3
+MAX_DAILY_LOSS = 0.05      # 5% max daily loss
+MAX_DRAWDOWN = 0.20        # 20% max drawdown before reducing position sizes
 
 # MT5 Configuration
 MT5_LOGIN = int(os.getenv("MT5_LOGIN", "12345678"))
@@ -46,3 +49,17 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 # File paths
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "logs")
+
+# Machine Learning Configuration
+ML_ENABLED = True
+ML_MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+ML_TRAINING_THRESHOLD = 50  # Minimum trades needed to train models
+ML_PREDICTION_WEIGHT = 0.3  # Weight of ML prediction in final signal (0.0-1.0)
+
+# Risk Engine Configuration
+RISK_PER_TRADE_DYNAMIC = True  # Enable dynamic position sizing
+VOLATILITY_ADJUSTMENT = True   # Enable volatility-based position sizing
+CONFIDENCE_ADJUSTMENT = True   # Enable signal confidence-based position sizing
+
+# Broker Configuration
+BROKER_TYPE = "MT5"  # Options: MT5, IBKR, etc.

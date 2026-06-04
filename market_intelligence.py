@@ -251,7 +251,7 @@ class MarketIntelligence:
             h4_trend = "BULLISH" if current_price > sma_h4 else "BEARISH"
             
             # Check for alignment
-            trend_aligned = (m15_trent == h4_trend)
+            trend_aligned = (m15_trend == h4_trend)
             
             # Detect swing levels proximity
             proximity_to_swing_high = abs(current_price - swing_high) / swing_high if swing_high != 0 else float('inf')

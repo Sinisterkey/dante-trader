@@ -6,9 +6,11 @@ CrewAI agent definitions and logic with ML integration
 import logging
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import pandas as pd
 from market_intelligence import MarketIntelligence
 from ml_integration import MLIntegration
+from broker_integration import MT5Broker
 from config import *
 
 logger = logging.getLogger(__name__)
@@ -20,23 +22,27 @@ class TradingAgents:
     def __init__(self):
         self.market_intel = MarketIntelligence()
         self.ml_integration = MLIntegration()
+        self.broker = MT5Broker()
         logger.info("Enhanced Trading Agents initialized")
     
     def analyze_and_recommend(self) -> Dict[str, Any]:
         """Main analysis pipeline using market intelligence and ML enhancement"""
         try:
-            # Get market intelligence data
-            market_data = self.market_intel.analyze_market()
+            # Fetch market data from broker
+            df_m15 = self.broker.get_historical_data(INSTRUMENT, "M15", BARS_TO_FETCH)
+            df_h4 = self.broker.get_historical_data(INSTRUMENT, "H4", BARS_TO_FETCH)
             
-            if market_data is None:
+            if df_m15 is None or df_h4 is None or df_m15.empty or df_h4.empty:
                 return {
                     "action": "NO_TRADE",
-                    "reasoning": "No valid market data available or outside trading session",
+                    "reasoning": "Failed to fetch market data from broker",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             
+            # Get market intelligence signal
+            market_data = self.market_intel.generate_signal(df_m15, df_h4)
+            
             # Get market data for ML feature extraction
-            # In a real implementation, we'd pass actual market data
             market_context = {
                 'rsi': market_data.get('rsi', 50.0),
                 'macd': market_data.get('macd', {}),
@@ -44,7 +50,7 @@ class TradingAgents:
                 'hour_of_day': datetime.now(timezone.utc).hour,
                 'day_of_week': datetime.now(timezone.utc).weekday(),
                 'session': 0.5 if self.market_intel.is_london_ny_overlap(datetime.now(timezone.utc)) else 0.0,
-                'volatility_regime': 0.5,  # Simplified
+                'volatility_regime': 0.5,  # Simplified - could be enhanced
                 'trend_alignment': 1.0 if market_data.get('trend_aligned') else 0.0
             }
             
