@@ -380,11 +380,63 @@ class MarketIntelligence:
             logger.info(f"Reason: {reason}")
             
             return result
-            
+        
         except Exception as e:
             logger.error(f"Error in market intelligence signal generation: {e}")
             return self._no_signal(f"Error in signal generation: {str(e)}")
     
+    def detect_market_regime(self, df: pd.DataFrame) -> str:
+        """Detect market regime based on volatility and trend strength.
+        Returns one of: 'trending_low_vol', 'trending_high_vol', 'ranging_low_vol', 'ranging_high_vol'
+        """
+        try:
+            if df is None or len(df) < 20:
+                return 'ranging_low_vol'  # default
+            
+            # Calculate volatility regime using ATR
+            atr = self.calculate_atr(df, period=14)
+            current_price = df['close'].iloc[-1]
+            if atr is None or current_price is None or current_price == 0:
+                vol_ratio = 0.01  # default
+            else:
+                vol_ratio = atr / current_price  # normalized ATR
+            
+            # Define volatility thresholds (these are examples, can be tuned)
+            high_vol_threshold = 0.02  # 2% of price
+            low_vol_threshold = 0.005  # 0.5% of price
+            
+            if vol_ratio > high_vol_threshold:
+                volatility_regime = 'high_vol'
+            elif vol_ratio < low_vol_threshold:
+                volatility_regime = 'low_vol'
+            else:
+                volatility_regime = 'medium_vol'  # we'll treat medium as low for simplicity in binary classification
+            
+            # Calculate trend strength using price distance from SMA
+            sma = self.calculate_sma(df, period=50)
+            if sma is None:
+                trend_regime = 'ranging'  # default if no SMA
+            else:
+                price_sma_diff = abs(current_price - sma) / sma if sma != 0 else 0
+                # Trend threshold: if price is more than 1.5 * ATR away from SMA, consider trending
+                trend_threshold = 1.5 * (atr if atr is not None else 0) / sma if sma != 0 else 0
+                if price_sma_diff > trend_threshold:
+                    trend_regime = 'trending'
+                else:
+                    trend_regime = 'ranging'
+            
+            # Combine regimes (simplify to two volatility states: high or not high)
+            if volatility_regime == 'high_vol':
+                vol_state = 'high_vol'
+            else:
+                vol_state = 'low_vol'  # includes low and medium
+            
+            return f"{trend_regime}_{vol_state}"
+            
+        except Exception as e:
+            logger.error(f"Error detecting market regime: {e}")
+            return 'ranging_low_vol'  # safe default
+
     def _no_signal(self, reason: str) -> Dict[str, Any]:
         """Return a no-signal result"""
         return {

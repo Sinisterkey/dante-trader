@@ -15,6 +15,7 @@ import json
 import time as time_module
 import threading
 from typing import Dict, List, Any, Optional
+from telegram import Bot
 from agents import TradingAgents
 from config import *
 from trade_logger import TradeLogger
@@ -30,12 +31,105 @@ class TradingDashboard:
     def __init__(self):
         # Initialize broker for data and account operations
         from broker_integration import MT5Broker
-        broker = MT5Broker()
-        self.trading_agents = TradingAgents(broker)  # Pass broker to agents
+        self.broker = MT5Broker()
+        self.trading_agents = TradingAgents(self.broker)  # Pass broker to agents
         self.trade_logger = TradeLogger()
         self.performance_analytics = PerformanceAnalytics(self.trade_logger)
-        self.risk_engine = RiskEngine(broker)  # Initialize with broker instance
+        self.risk_engine = RiskEngine(self.broker)  # Initialize with broker instance
         logger.info("Trading Dashboard initialized")
+    
+    def _start_systems(self):
+        """Start all trading systems"""
+        try:
+            # Start position manager
+            self.trading_agents.position_manager.start()
+            logger.info("Position manager started")
+            
+            # Log system start
+            self.trade_logger.log_system_event("info", "Trading systems started", {})
+            
+        except Exception as e:
+            logger.error(f"Error starting systems: {e}")
+    
+    def _stop_systems(self):
+        """Stop all trading systems"""
+        try:
+            # Stop position manager
+            self.trading_agents.position_manager.stop()
+            logger.info("Position manager stopped")
+            
+            # Log system stop
+            self.trade_logger.log_system_event("info", "Trading systems stopped", {})
+            
+        except Exception as e:
+            logger.error(f"Error stopping systems: {e}")
+    
+    def _analysis_loop(self):
+        """Background thread for continuous market analysis"""
+        import streamlit as st
+        import time as time_module
+        from datetime import datetime, timezone
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Initialize session state for this thread if needed
+        if 'is_running' not in st.session_state:
+            st.session_state.is_running = False
+        if 'last_analysis' not in st.session_state:
+            st.session_state.last_analysis = None
+        if 'analysis_history' not in st.session_state:
+            st.session_state.analysis_history = []
+        if 'telegram_alerts_sent' not in st.session_state:
+            st.session_state.telegram_alerts_sent = set()
+        
+        # Start systems when analysis begins
+        if st.session_state.get('is_running', False) and not getattr(self, '_systems_started', False):
+            self._start_systems()
+            self._systems_started = True
+        
+        while st.session_state.get('is_running', False):
+            try:
+                # Perform analysis
+                analysis = self.trading_agents.analyze_and_recommend()
+                analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
+                
+                # Update session state
+                st.session_state.last_analysis = analysis
+                st.session_state.analysis_history.append(analysis)
+                
+                # Keep only last 100 analyses
+                if len(st.session_state.analysis_history) > 100:
+                    st.session_state.analysis_history = st.session_state.analysis_history[-100:]
+                
+                # Execute trade if signal is valid
+                if analysis.get('action') in ['BUY', 'SELL'] and analysis.get('confidence', 0) >= 70:
+                    # Execute the signal
+                    result = self.trading_agents.execute_signal(analysis)
+                    
+                    if result.get('success', False):
+                        logger.info(f"Trade executed: {analysis['action']} at {analysis.get('entry_price')}")
+                        # In a real implementation, we would send a Telegram alert here
+                        # For now, we'll just log it
+                        logger.info(f"Would send Telegram alert for {analysis['action']} signal")
+                        if 'telegram_alerts_sent' not in st.session_state:
+                            st.session_state.telegram_alerts_sent = set()
+                        signal_id = f"{analysis['action']}_{analysis.get('entry_price', 0)}_{analysis['timestamp'][:16]}"
+                        st.session_state.telegram_alerts_sent.add(signal_id)
+                    else:
+                        logger.warning(f"Trade execution failed: {result.get('error', 'Unknown error')}")
+                
+                # Wait before next analysis
+                time_module.sleep(15)  # UPDATE_INTERVAL from config
+                
+            except Exception as e:
+                logger.error(f"Error in analysis loop: {e}")
+                time_module.sleep(15)
+                
+        # Stop systems when analysis ends
+        if getattr(self, '_systems_started', False):
+            self._stop_systems()
+            self._systems_started = False
     
     def render_dashboard(self):
         """Render the main dashboard"""
@@ -491,6 +585,7 @@ class TradingDashboard:
                 thought_process.append(f"[Market Intelligence] Trend: M15={market_data.get('m15_trend', 'N/A')}, "
                                      f"H4={market_data.get('h4_trend', 'N/A')}, Aligned: {market_data.get('trend_aligned', False)}")
                 thought_process.append(f"[Market Intelligence] Session: {market_data.get('session', 'UNKNOWN')}")
+                thought_process.append(f"[Market Intelligence] Regime: {market_data.get('market_regime', 'UNKNOWN')}")
             
             # Add ML enhancement thoughts
             if 'ml_data' in analysis:

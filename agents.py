@@ -12,6 +12,15 @@ from market_intelligence import MarketIntelligence
 from ml_integration import MLIntegration
 from broker_integration import MT5Broker
 from config import *
+from trade_logger import TradeLogger
+from performance_analytics import PerformanceAnalytics
+from position_manager import PositionManager
+try:
+    from telegram import Bot
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    TELEGRAM_AVAILABLE = False
+    Bot = None
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +32,17 @@ class TradingAgents:
         self.market_intel = MarketIntelligence()
         self.ml_integration = MLIntegration()
         self.broker = broker if broker is not None else MT5Broker()
+        self.position_manager = PositionManager(self.broker, self.market_intel)
+        self.trade_logger = TradeLogger()
+        self.performance_analytics = PerformanceAnalytics(self.trade_logger)
+        # Initialize Telegram bot if credentials are available
+        self.telegram_bot = None
+        if TELEGRAM_AVAILABLE and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+            try:
+                self.telegram_bot = Bot(token=TELEGRAM_TOKEN)
+                logger.info("Telegram bot initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize Telegram bot: {e}")
         logger.info("Enhanced Trading Agents initialized")
     
     def analyze_and_recommend(self) -> Dict[str, Any]:
@@ -42,6 +62,9 @@ class TradingAgents:
             # Get market intelligence signal
             market_data = self.market_intel.generate_signal(df_m15, df_h4)
             
+            # Detect market regime
+            market_regime = self.market_intel.detect_market_regime(df_m15)
+            
             # Get market data for ML feature extraction
             market_context = {
                 'rsi': market_data.get('rsi', 50.0),
@@ -50,7 +73,7 @@ class TradingAgents:
                 'hour_of_day': datetime.now(timezone.utc).hour,
                 'day_of_week': datetime.now(timezone.utc).weekday(),
                 'session': 0.5 if self.market_intel.is_london_ny_overlap(datetime.now(timezone.utc)) else 0.0,
-                'volatility_regime': 0.5,  # Simplified - could be enhanced
+                'volatility_regime': 0.5 if 'high_vol' in market_regime else 0.0,  # Simplified
                 'trend_alignment': 1.0 if market_data.get('trend_aligned') else 0.0
             }
             
@@ -131,7 +154,8 @@ class TradingAgents:
                         "ml_expected_profit": enhanced_signal.get('ml_expected_profit', 0.0),
                         "original_confidence": enhanced_signal.get('original_confidence', 0),
                         "enhanced_confidence": enhanced_signal.get('enhanced_confidence', 0.0)
-                    }
+                    },
+                    "market_regime": market_regime  # Add market regime to result
                 }
                 
             else:
@@ -177,7 +201,8 @@ class TradingAgents:
                         "ml_expected_profit": 0.0,
                         "original_confidence": 0.0,
                         "enhanced_confidence": 0.0
-                    }
+                    },
+                    "market_regime": market_regime  # Add market regime to result
                 }
             
             return result
@@ -189,6 +214,81 @@ class TradingAgents:
                 "reasoning": f"Error in analysis pipeline: {str(e)}",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
+
+    def execute_signal(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a trading signal from the agent system"""
+        try:
+            # Validate signal
+            action = signal.get('action')
+            if action == 'NO_TRADE':
+                return {"success": False, "reason": "No trade signal"}
+            
+            # Check if we can open a new position (risk management)
+            can_open, reason = self.position_manager.can_open_new_position()
+            if not can_open:
+                return {"success": False, "reason": reason}
+            
+            # Execute the signal
+            result = self.position_manager.execute_signal(signal)
+            
+            # Log the trade if successful
+            if result.get('success', False):
+                # Log trade open
+                position_data = result.get('position', {})
+                if position_data:
+                    trade_id = self.trade_logger.log_trade_open(position_data)
+                    logger.info(f"Trade opened logged with ID: {trade_id}")
+                    
+                    # Log system event for trade execution
+                    self.trade_logger.log_system_event("trade", f"Executed {action} trade", {
+                        "ticket": position_data.get('ticket'),
+                        "action": action,
+                        "entry_price": position_data.get('entry_price'),
+                        "volume": position_data.get('volume'),
+                        "confidence": signal.get('confidence'),
+                        "reason": signal.get('reasoning', '')
+                    })
+                    
+                    # Send Telegram alert
+                    if self.telegram_bot and TELEGRAM_CHAT_ID:
+                        try:
+                            message = self._format_telegram_message(signal, position_data)
+                            self.telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='HTML')
+                            logger.info(f"Telegram alert sent for {action} signal")
+                        except Exception as e:
+                            logger.error(f"Failed to send Telegram alert: {e}")
+                
+                # Update performance metrics
+                self.performance_analytics.calculate_advanced_metrics([])
+                
+                # Online learning from trade outcome (will be updated when trade closes)
+                # For now, we'll store the signal for later updating when trade closes
+                # In a real implementation, we would need to track open trades and update on close
+                
+                logger.info(f"Signal executed: {action} {signal.get('entry_price')} with confidence {signal.get('confidence')}%")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error executing signal: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _format_telegram_message(self, signal: Dict[str, Any], position_data: Dict[str, Any]) -> str:
+        """Format signal and position data for Telegram alert"""
+        action_emoji = "🟢" if signal['action'] == 'BUY' else "🔴"
+        
+        message = f"{action_emoji} <b>NAS100 TRADE SIGNAL</b> {action_emoji}\n\n"
+        message += f"<b>Action:</b> {signal['action']}\n"
+        message += f"<b>Entry:</b> {signal.get('entry_price', 0):.2f}\n"
+        message += f"<b>Stop Loss:</b> {signal.get('stop_loss', 0):.2f}\n"
+        message += f"<b>Take Profit:</b> {signal.get('take_profit', 0):.2f}\n"
+        message += f"<b>Risk Amount:</b> {signal.get('risk_amount', 0):.2f} points\n\n"
+        message += f"<b>Confidence:</b> {signal.get('confidence', 0)}%\n"
+        message += f"<b>Position Size:</b> {position_data.get('volume', 0):.2f} lots\n\n"
+        message += f"<b>Reasoning:</b>\n{signal.get('reasoning', 'No reasoning provided')}\n\n"
+        message += f"<b>Time:</b> {signal.get('timestamp', datetime.now(timezone.utc).isoformat())}\n"
+        
+        return message
     
     def retrain_ml_models(self) -> Dict[str, Any]:
         """Retrain ML models with latest trade data"""

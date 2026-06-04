@@ -188,6 +188,34 @@ class TradeLogger:
             logger.error(f"Error logging trade close: {e}")
             self.connection.rollback()
             return False
+
+    def log_system_event(self, event_type: str, message: str, details: Dict[str, Any] = None) -> int:
+        """Log a system event"""
+        try:
+            cursor = self.connection.cursor()
+            
+            details_json = json.dumps(details) if details else None
+            
+            cursor.execute("""
+                INSERT INTO system_events (
+                    event_type, message, details, timestamp
+                ) VALUES (?, ?, ?, ?)
+            """, (
+                event_type,
+                message,
+                details_json,
+                datetime.now(timezone.utc).isoformat()
+            ))
+            
+            self.connection.commit()
+            event_id = cursor.lastrowid
+            logger.info(f"System event logged: {event_type} - {message}")
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"Error logging system event: {e}")
+            self.connection.rollback()
+            return -1
     
     def update_trade_unrealized_pnl(self, ticket: int, unrealized_pnl: float) -> bool:
         """Update the unrealized P&L for an open trade"""
