@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # NAS100 Specific Configuration
-INSTRUMENT = "NAS100"  # or "^NDX" for NASDAQ index
+INSTRUMENT = "ND100m"  # Confirmed available symbol from MT5
 LOOKBACK_PERIOD = 50   # For swing high/low calculation
 
 # Timeframes (in minutes)

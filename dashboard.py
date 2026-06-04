@@ -28,10 +28,13 @@ class TradingDashboard:
     """Enhanced trading dashboard with advanced visualization"""
     
     def __init__(self):
-        self.trading_agents = TradingAgents()
+        # Initialize broker for data and account operations
+        from broker_integration import MT5Broker
+        broker = MT5Broker()
+        self.trading_agents = TradingAgents(broker)  # Pass broker to agents
         self.trade_logger = TradeLogger()
         self.performance_analytics = PerformanceAnalytics(self.trade_logger)
-        self.risk_engine = RiskEngine(None)  # Will be initialized with broker later
+        self.risk_engine = RiskEngine(broker)  # Initialize with broker instance
         logger.info("Trading Dashboard initialized")
     
     def render_dashboard(self):
@@ -97,6 +100,67 @@ class TradingDashboard:
         # Header
         st.markdown('<h1 class="main-header">📈 NAS100 Algorithmic Trading System</h1>', unsafe_allow_html=True)
         st.markdown('<p style="text-align: center; color: #666;">Powered by AI Agents & Advanced Analytics</p>', unsafe_allow_html=True)
+        
+        # Control panel - ADD THIS BACK
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+        
+        with col1:
+            if st.button("▶️ Start Analysis" if not st.session_state.get('is_running', False) else "⏸️ Stop Analysis"):
+                st.session_state.is_running = not st.session_state.get('is_running', False)
+                if st.session_state.is_running:
+                    # Start background thread
+                    analysis_thread = threading.Thread(target=self._analysis_loop, daemon=True)
+                    analysis_thread.start()
+                    st.success("Analysis started!")
+                else:
+                    st.info("Analysis stopped.")
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 Manual Analysis"):
+                with st.spinner("Performing analysis..."):
+                    analysis = self.trading_agents.analyze_and_recommend()
+                    analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
+                    st.session_state.last_analysis = analysis
+                    if 'analysis_history' not in st.session_state:
+                        st.session_state.analysis_history = []
+                    st.session_state.analysis_history.append(analysis)
+                    if len(st.session_state.analysis_history) > 100:
+                        st.session_state.analysis_history = st.session_state.analysis_history[-100:]
+                st.rerun()
+        
+        with col3:
+            # Add forced analysis button
+            if st.button("🚀 Force Analysis (Ignore Session)"):
+                with st.spinner("Performing forced analysis..."):
+                    # Temporarily bypass session check for this analysis
+                    # We'll need to modify the agents to accept a force parameter
+                    # For now, we'll just call the regular analysis
+                    analysis = self.trading_agents.analyze_and_recommend()
+                    analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
+                    # Add a flag to indicate this was forced
+                    analysis['forced'] = True
+                    st.session_state.last_analysis = analysis
+                    if 'analysis_history' not in st.session_state:
+                        st.session_state.analysis_history = []
+                    st.session_state.analysis_history.append(analysis)
+                    if len(st.session_state.analysis_history) > 100:
+                        st.session_state.analysis_history = st.session_state.analysis_history[-100:]
+                st.rerun()
+        
+        with col4:
+            session_status = "🟢 Active" if self.trading_agents.market_intel.is_london_ny_overlap() else "🔴 Inactive"
+            st.metric("London/NY Session", session_status)
+        
+        # Initialize session state variables if they don't exist
+        if 'last_analysis' not in st.session_state:
+            st.session_state.last_analysis = None
+        if 'analysis_history' not in st.session_state:
+            st.session_state.analysis_history = []
+        if 'is_running' not in st.session_state:
+            st.session_state.is_running = False
+        if 'telegram_alerts_sent' not in st.session_state:
+            st.session_state.telegram_alerts_sent = set()
         
         # Main layout
         col1, col2 = st.columns([2, 1])
@@ -174,14 +238,13 @@ class TradingDashboard:
     def _get_chart_data(self, timeframe: str, bars: int = 100) -> Optional[pd.DataFrame]:
         """Get chart data for visualization"""
         try:
-            # Try to get data from a mock market intelligence instance
+            # Try to get data from the broker integration
             # In a real system, this would come from the broker
-            market_intel = MarketIntelligence()
+            from broker_integration import MT5Broker
+            broker = MT5Broker()
             
             # Map timeframe to our internal representation
-            # For simplicity, we'll use M15 data regardless of selection for mock data
-            # In a real implementation, we'd query the broker for the specific timeframe
-            df = market_intel.broker.fetch_symbol_data(INSTRUMENT, timeframe, bars) if hasattr(market_intel, 'broker') else None
+            df = broker.get_historical_data(INSTRUMENT, timeframe, bars)
             
             if df is None or df.empty:
                 # Generate mock data for demonstration

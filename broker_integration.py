@@ -182,7 +182,7 @@ class MT5Broker(BrokerAPI):
             logger.error(f"Error getting symbol info for {symbol}: {e}")
             return {}
     
-    def get_historical_data(self, symbol: str, timeframe: str, bars: int = 100) -> pd.DataBar:
+    def get_historical_data(self, symbol: str, timeframe: str, bars: int = 100) -> pd.DataFrame:
         """Get historical price data"""
         if not self.is_connected():
             if not self.connect():
@@ -218,6 +218,10 @@ class MT5Broker(BrokerAPI):
             # Convert to DataFrame
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
+            # Ensure volume column exists for compatibility with dashboard
+            # Use tick_volume as volume proxy (real_volume is often 0 for CFDs)
+            if 'volume' not in df.columns:
+                df['volume'] = df['tick_volume']
             
             logger.info(f"Fetched {len(df)} bars for {symbol} {timeframe}")
             return df
@@ -493,6 +497,7 @@ class MT5Broker(BrokerAPI):
                 'high': high_price,
                 'low': low_price,
                 'close': close_price,
+                'volume': volume,
                 'tick_volume': volume,
                 'spread': 10,
                 'real_volume': volume

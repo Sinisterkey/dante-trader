@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 class TradingAgents:
     """Enhanced trading agents with ML integration"""
     
-    def __init__(self):
+    def __init__(self, broker=None):
         self.market_intel = MarketIntelligence()
         self.ml_integration = MLIntegration()
-        self.broker = MT5Broker()
+        self.broker = broker if broker is not None else MT5Broker()
         logger.info("Enhanced Trading Agents initialized")
     
     def analyze_and_recommend(self) -> Dict[str, Any]:

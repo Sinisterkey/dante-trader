@@ -321,8 +321,7 @@ class TradeLogger:
             avg_profit = (total_profit / winning_count) if winning_count > 0 else 0.0
             avg_loss = (total_loss / losing_count) if losing_count > 0 else 0.0
             
-            profit_factor = (total_profit / total_loss) if total_loss > 0 Achieved
-            }
+            profit_factor = (total_profit / total_loss) if total_loss > 0 else 0.0
         except Exception as e:
             logger.error(f"Error calculating performance metrics: {e}")
             return {}
