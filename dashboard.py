@@ -68,7 +68,10 @@ def run_backtest(symbol: str, days: int, timeframe: str) -> Dict[str, Any]:
         df = broker.get_historical_data(symbol, timeframe, bars_needed)
         
         if df is None or df.empty:
-            return {"error": "No historical data available"}
+            err_msg = f"No historical data available for {symbol}"
+            if df is not None:
+                err_msg += f" (got {len(df)} bars)"
+            return {"error": err_msg}
         
         if 'time' in df.columns:
             df = df.set_index('time')
