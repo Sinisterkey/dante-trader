@@ -43,6 +43,10 @@ env/
 data/trades.db
 *.db
 
+# ML Models
+models/
+*.pkl
+
 # Logs
 *.log
 logs/
