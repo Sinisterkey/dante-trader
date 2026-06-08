@@ -57,6 +57,15 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 # File paths
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "logs")
+DB_PATH = os.path.join(os.path.dirname(__file__), "data", "trading.db")
+
+# News feeds for sentiment analysis
+NEWS_FEED_URLS = [
+    "https://feeds.reuters.com/reuters/marketsNews",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "https://rss.cnn.com/rss/edition_business.rss",
+    "https://www.ft.com/rss",
+]
 
 # Machine Learning Configuration
 ML_ENABLED = True

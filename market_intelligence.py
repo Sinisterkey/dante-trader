@@ -372,6 +372,10 @@ class MarketIntelligence:
                 "rsi": rsi,
                 "macd": macd_data,
                 "bollinger_bands": bb_data,
+                "bb_position": self._calculate_bb_position(df_m15, bb_data) if bb_data else 0.5,
+                "price_vs_sma20": (current_price - sma_m15) / sma_m15 if sma_m15 and sma_m15 > 0 else 0,
+                "price_vs_sma50": (current_price - sma_h4) / sma_h4 if sma_h4 and sma_h4 > 0 else 0,
+                "volume": df_m15.get('tick_volume', pd.Series([1000])).iloc[-1],
                 "reason": reason,
                 "confidence": min(confidence, 100),  # Cap at 100%
                 "timestamp": datetime.now(timezone.utc),
@@ -387,6 +391,16 @@ class MarketIntelligence:
         except Exception as e:
             logger.error(f"Error in market intelligence signal generation: {e}")
             return self._no_signal(f"Error in signal generation: {str(e)}")
+    
+    def _calculate_bb_position(self, df: pd.DataFrame, bb_data: Dict) -> float:
+        """Calculate position within Bollinger Bands (0 = lower band, 0.5 = middle, 1 = upper band)"""
+        try:
+            if bb_data.get('lower') and bb_data.get('upper') and bb_data['upper'] != bb_data['lower']:
+                current_price = df['close'].iloc[-1]
+                return (current_price - bb_data['lower']) / (bb_data['upper'] - bb_data['lower'])
+            return 0.5
+        except Exception:
+            return 0.5
     
     def detect_market_regime(self, df: pd.DataFrame) -> str:
         """Detect market regime based on volatility and trend strength.

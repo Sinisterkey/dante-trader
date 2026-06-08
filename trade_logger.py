@@ -61,6 +61,18 @@ class TradeLogger:
                     confidence INTEGER,  -- signal confidence %
                     strategy TEXT,  -- which strategy generated the signal
                     ml_confidence REAL,  -- ML-enhanced confidence
+                    rsi REAL,
+                    macd REAL,
+                    bb_position REAL,
+                    atr_normalized REAL,
+                    volume_ratio REAL,
+                    price_vs_sma20 REAL,
+                    price_vs_sma50 REAL,
+                    hour_of_day INTEGER,
+                    day_of_week INTEGER,
+                    session INTEGER,  -- 0=Asian, 1=London/NY overlap
+                    volatility_regime REAL,  -- 0-1
+                    trend_alignment INTEGER,  -- 0 or 1
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -119,8 +131,11 @@ class TradeLogger:
                 INSERT INTO trades (
                     ticket, symbol, side, volume, entry_price, entry_time,
                     stop_loss, take_profit, reason, confidence, strategy,
-                    ml_confidence, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ml_confidence, rsi, macd, bb_position, atr_normalized,
+                    volume_ratio, price_vs_sma20, price_vs_sma50, hour_of_day,
+                    day_of_week, session, volatility_regime, trend_alignment,
+                    status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 position_data.get('ticket'),
                 position_data.get('symbol'),
@@ -134,6 +149,18 @@ class TradeLogger:
                 position_data.get('confidence', 0),
                 position_data.get('strategy', 'AI_Signal'),
                 position_data.get('ml_confidence', 0.0),
+                position_data.get('rsi', 50.0),
+                position_data.get('macd', 0.0),
+                position_data.get('bb_position', 0.5),
+                position_data.get('atr_normalized', 0.01),
+                position_data.get('volume_ratio', 1.0),
+                position_data.get('price_vs_sma20', 0.0),
+                position_data.get('price_vs_sma50', 0.0),
+                position_data.get('hour_of_day', 12),
+                position_data.get('day_of_week', 3),
+                position_data.get('session', 0.5),
+                position_data.get('volatility_regime', 0.5),
+                position_data.get('trend_alignment', 0.5),
                 'open',
                 datetime.now(timezone.utc).isoformat(),
                 datetime.now(timezone.utc).isoformat()

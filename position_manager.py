@@ -127,7 +127,20 @@ class PositionManager:
                 'signal_reason': signal.get('reason', ''),
                 'timestamp': datetime.now(timezone.utc),
                 'status': 'open',
-                'unrealized_pnl': 0.0
+                'unrealized_pnl': 0.0,
+                'ml_confidence': signal.get('ml_confidence', 0.0),
+                'rsi': signal.get('rsi', 50.0),
+                'macd': signal.get('macd', 0.0),
+                'bb_position': 0.5,
+                'atr_normalized': 0.01,
+                'volume_ratio': 1.0,
+                'price_vs_sma20': signal.get('price_vs_sma20', 0.0),
+                'price_vs_sma50': signal.get('price_vs_sma50', 0.0),
+                'hour_of_day': datetime.now(timezone.utc).hour,
+                'day_of_week': datetime.now(timezone.utc).weekday(),
+                'session': 1.0 if self.market_intel.is_london_ny_overlap() else 0.0,
+                'volatility_regime': 0.5,
+                'trend_alignment': 1.0 if signal.get('trend_aligned', False) else 0.0
             }
             
             with self._lock:

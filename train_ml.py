@@ -142,6 +142,14 @@ def train_initial_models():
     print(f"Profit regressor MSE: {mse:.2f}")
     print(f"Trades generated: {len(trades)}")
     print(f"Feature importance: {dict(zip(feature_names, classifier.feature_importances_))}")
+    
+    return {
+        "success": True,
+        "signal_accuracy": acc,
+        "profit_mse": mse,
+        "trades_generated": len(trades),
+        "feature_importance": dict(zip(feature_names, classifier.feature_importances_.tolist()))
+    }
 
 
 if __name__ == "__main__":
