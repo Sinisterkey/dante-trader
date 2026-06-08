@@ -5,6 +5,14 @@ load_dotenv()
 
 # NAS100 Specific Configuration
 INSTRUMENT = "ND100m"  # Confirmed available symbol from MT5
+AVAILABLE_INSTRUMENTS = ["ND100m", "XAUUSD", "BTCUSD"]  # NAS100, Gold, Bitcoin
+
+# Yahoo Finance Symbol Mapping (used when MT5 not available)
+YF_SYMBOL_MAP = {
+    "ND100m": "^NDX",      # NAS100 -> Nasdaq 100
+    "XAUUSD": "GC=F",       # Gold futures
+    "BTCUSD": "BTC-USD",    # Bitcoin
+}
 LOOKBACK_PERIOD = 50   # For swing high/low calculation
 
 # Timeframes (in minutes)

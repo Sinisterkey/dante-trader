@@ -1,12 +1,23 @@
 """
 Broker Integration Module
-Handles connectivity with brokerage APIs (MetaTrader 5, Interactive Brokers)
+Handles connectivity with brokerage APIs (MetaTrader 5, Yahoo Finance)
 """
 
-import MetaTrader5 as mt5
+try:
+    import yfinance as yf
+    YF_AVAILABLE = True
+except ImportError:
+    yf = None
+    YF_AVAILABLE = False
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 import time as time_module
 from abc import ABC, abstractmethod
@@ -108,13 +119,17 @@ class MT5Broker(BrokerAPI):
     
     def __init__(self):
         self.connected = False
-        self.login = MT5_LOGIN
-        self.password = MT5_PASSWORD
-        self.server = MT5_SERVER
-        self.timeout = MT5_TIMEOUT
-        
+        self.login = MT5_LOGIN if MT5_AVAILABLE else None
+        self.password = MT5_PASSWORD if MT5_AVAILABLE else None
+        self.server = MT5_SERVER if MT5_AVAILABLE else None
+        self.timeout = MT5_TIMEOUT if MT5_AVAILABLE else 0
+    
     def connect(self) -> bool:
         """Establish connection to MT5 terminal"""
+        if not MT5_AVAILABLE:
+            logger.warning("MT5 not available - running in demo mode with mock data")
+            self.connected = True  # Demo mode "connected"
+            return True
         try:
             if not mt5.initialize():
                 logger.error(f"MT5 initialize() failed, error code = {mt5.last_error()}")
@@ -138,16 +153,29 @@ class MT5Broker(BrokerAPI):
     def disconnect(self) -> None:
         """Disconnect from MT5 terminal"""
         if self.connected:
-            mt5.shutdown()
+            if MT5_AVAILABLE:
+                mt5.shutdown()
             self.connected = False
-            logger.info("Disconnected from MT5")
+            logger.info("Disconnected from broker")
     
     def is_connected(self) -> bool:
         """Check if MT5 connection is active"""
+        if not MT5_AVAILABLE:
+            return self.connected
         return self.connected and mt5.terminal_info() is not None
     
     def get_account_info(self) -> Dict[str, Any]:
         """Get account information"""
+        if not MT5_AVAILABLE:
+            # Return mock account info for demo mode
+            return {
+                'login': 'demo',
+                'balance': 100000.0,
+                'equity': 100000.0,
+                'margin': 0.0,
+                'margin_free': 100000.0,
+                'margin_level': 500.0
+            }
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -166,6 +194,16 @@ class MT5Broker(BrokerAPI):
     
     def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
         """Get symbol information"""
+        if not MT5_AVAILABLE and YF_AVAILABLE:
+            return self._get_yf_symbol_info(symbol)
+        if not MT5_AVAILABLE:
+            return {
+                'symbol': symbol,
+                'bid': 18000.0,
+                'ask': 18001.0,
+                'point': 0.1,
+                'digits': 1
+            }
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -181,9 +219,43 @@ class MT5Broker(BrokerAPI):
         except Exception as e:
             logger.error(f"Error getting symbol info for {symbol}: {e}")
             return {}
+
+    def _get_yf_symbol_info(self, symbol: str) -> Dict[str, Any]:
+        """Get symbol info from Yahoo Finance"""
+        if not YF_AVAILABLE:
+            return {}
+        try:
+            yf_symbol = self._convert_to_yf_symbol(symbol)
+            ticker = yf.Ticker(yf_symbol)
+            info = ticker.info
+            hist = ticker.history(period="1d", interval="1m")
+            if hist.empty:
+                return {}
+            last = hist.iloc[-1]
+            return {
+                'symbol': symbol,
+                'bid': float(last['close']),
+                'ask': float(last['close']),
+                'last': float(last['close']),
+                'volume': int(last['volume']),
+                'point': 0.1,
+                'digits': 1,
+                'high': float(last['high']),
+                'low': float(last['low']),
+                'open': float(last['open']),
+            }
+        except Exception as e:
+            logger.error(f"Error getting Yahoo Finance symbol info: {e}")
+            return {}
     
     def get_historical_data(self, symbol: str, timeframe: str, bars: int = 100) -> pd.DataFrame:
         """Get historical price data"""
+        if not MT5_AVAILABLE and YF_AVAILABLE:
+            return self._get_yfinance_data(symbol, timeframe, bars)
+        if not MT5_AVAILABLE:
+            logger.warning("Neither MT5 nor YF available for market data")
+            return pd.DataFrame()
+        
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -231,6 +303,11 @@ class MT5Broker(BrokerAPI):
     
     def get_real_time_data(self, symbol: str) -> Dict[str, Any]:
         """Get real-time price data"""
+        if not MT5_AVAILABLE and YF_AVAILABLE:
+            return self._get_yf_real_time(symbol)
+        if not MT5_AVAILABLE:
+            logger.warning("No broker available for real-time data")
+            return {}
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -259,6 +336,9 @@ class MT5Broker(BrokerAPI):
                    volume: float, price: float = 0.0, sl: float = 0.0, 
                    tp: float = 0.0, comment: str = "") -> Dict[str, Any]:
         """Place a trading order"""
+        if not MT5_AVAILABLE:
+            logger.info(f"Demo mode: Would place {side.value} order for {symbol}")
+            return {"success": True, "order": "demo", "volume": volume, "price": price}
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -325,6 +405,8 @@ class MT5Broker(BrokerAPI):
     
     def modify_order(self, ticket: int, sl: float = None, tp: float = None) -> Dict[str, Any]:
         """Modify an existing order"""
+        if not MT5_AVAILABLE:
+            return {"success": True, "result": "demo"}
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -374,6 +456,8 @@ class MT5Broker(BrokerAPI):
     
     def cancel_order(self, ticket: int) -> Dict[str, Any]:
         """Cancel an order"""
+        if not MT5_AVAILABLE:
+            return {"success": True, "result": "demo"}
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -405,6 +489,8 @@ class MT5Broker(BrokerAPI):
     
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get all open positions"""
+        if not MT5_AVAILABLE:
+            return []
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -423,6 +509,8 @@ class MT5Broker(BrokerAPI):
     
     def get_order_history(self, from_date: datetime, to_date: datetime) -> List[Dict[str, Any]]:
         """Get order history"""
+        if not MT5_AVAILABLE:
+            return []
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
@@ -443,6 +531,86 @@ class MT5Broker(BrokerAPI):
             logger.error(f"Error getting order history: {e}")
             return []
     
+    def _get_yfinance_data(self, symbol: str, timeframe: str, bars: int = 100) -> pd.DataFrame:
+        """Get historical data from Yahoo Finance"""
+        if not YF_AVAILABLE:
+            return pd.DataFrame()
+        
+        try:
+            yf_symbol = self._convert_to_yf_symbol(symbol)
+            tf_map = {
+                "M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
+                "H1": "1h", "H4": "1h", "D1": "1d", "W1": "1wk", "MN1": "1mo"
+            }
+            
+            # Map bars to appropriate period
+            period_map = {"M1": "1d", "M5": "5d", "M15": "1mo", "M30": "3mo", "H1": "6mo", "H4": "6mo", "D1": "1y", "W1": "2y", "MN1": "5y"}
+            period = period_map.get(timeframe, "1mo")
+            
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(period=period, interval=tf_map.get(timeframe, "1h"))
+            
+            if df.empty:
+                logger.warning(f"No Yahoo Finance data for {yf_symbol}")
+                return pd.DataFrame()
+            
+            # Limit to requested bars
+            df = df.tail(bars)
+            
+            # Rename columns to match MT5 format
+            df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
+            df["tick_volume"] = df["volume"]
+            df["real_volume"] = df["volume"]
+            df["spread"] = 0
+            
+            logger.info(f"Fetched {len(df)} bars from Yahoo Finance for {yf_symbol}")
+            return df
+        except Exception as e:
+            logger.error(f"Error fetching from Yahoo Finance: {e}")
+            return pd.DataFrame()
+
+    def _get_yf_real_time(self, symbol: str) -> Dict[str, Any]:
+        """Get real-time data from Yahoo Finance"""
+        if not YF_AVAILABLE:
+            return {}
+        try:
+            yf_symbol = self._convert_to_yf_symbol(symbol)
+            ticker = yf.Ticker(yf_symbol)
+            info = ticker.history(period="1d", interval="1m")
+            if info.empty:
+                return {}
+            last_row = info.iloc[-1]
+            return {
+                'symbol': symbol,
+                'bid': float(last_row['close']),
+                'ask': float(last_row['close']),
+                'last': float(last_row['close']),
+                'volume': int(last_row['volume']),
+                'time': datetime.now(timezone.utc),
+                'open': float(last_row['open']),
+                'high': float(last_row['high']),
+                'low': float(last_row['low']),
+            }
+        except Exception as e:
+            logger.error(f"Error getting Yahoo Finance real-time data: {e}")
+            return {}
+
+    def _convert_to_yf_symbol(self, symbol: str) -> str:
+        """Convert MT5 symbol to Yahoo Finance symbol"""
+        yf_symbols = {
+            "ND100m": "^NDX",
+            "NAS100": "^NDX",
+            "NAS": "^NDX",
+            "NDX": "^NDX",
+            "XAUUSD": "GC=F",
+            "GOLD": "GC=F",
+            "GC": "GC=F",
+            "BTCUSD": "BTC-USD",
+            "BITCOIN": "BTC-USD",
+            "BTC": "BTC-USD",
+        }
+        return yf_symbols.get(symbol, symbol)
+
     def _generate_mock_data(self, timeframe: str, bars: int = 100) -> pd.DataFrame:
         """Generate mock data for demonstration when MT5 is not available"""
         logger.info(f"Generating mock data for {timeframe}")

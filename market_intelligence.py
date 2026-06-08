@@ -3,7 +3,10 @@ Enhanced Market Intelligence Module
 Core trading strategy with technical analysis and signal generation
 """
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError:
+    mt5 = None
 import pandas as pd
 import numpy as np
 from datetime import datetime, time, timezone

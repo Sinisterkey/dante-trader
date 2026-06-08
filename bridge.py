@@ -1,7 +1,18 @@
-import MetaTrader5 as mt5
+try:
+    import yfinance as yf
+    YF_AVAILABLE = True
+except ImportError:
+    yf = None
+    YF_AVAILABLE = False
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
 import pandas as pd
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 import logging
 import time as time_module
 from config import *
@@ -15,12 +26,15 @@ class MT5Bridge:
     
     def connect(self):
         """Establish connection to MT5 terminal"""
+        if not MT5_AVAILABLE:
+            logger.warning("MT5 not available - running in demo mode with mock data")
+            self.connected = True  # Demo mode "connected"
+            return True
         try:
             if not mt5.initialize():
                 logger.error(f"MT5 initialize() failed, error code = {mt5.last_error()}")
                 return False
             
-            # Login to account
             authorized = mt5.login(login=MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
             if not authorized:
                 logger.error(f"MT5 login failed, error code = {mt5.last_error()}")
@@ -38,20 +52,28 @@ class MT5Bridge:
     def disconnect(self):
         """Disconnect from MT5 terminal"""
         if self.connected:
-            mt5.shutdown()
+            if MT5_AVAILABLE:
+                mt5.shutdown()
             self.connected = False
-            logger.info("Disconnected from MT5")
+            logger.info("Disconnected from broker")
     
     def is_connected(self):
         """Check if MT5 connection is active"""
-        return self.connected
+        if not MT5_AVAILABLE:
+            return self.connected
+        return self.connected and mt5.terminal_info() is not None
     
     def fetch_symbol_data(self, symbol, timeframe, bars=100):
         """Fetch historical data for a symbol and timeframe"""
+        if not MT5_AVAILABLE and YF_AVAILABLE:
+            return self._fetch_yf_data(symbol, timeframe, bars)
+        if not MT5_AVAILABLE:
+            logger.warning("Neither MT5 nor YF available for market data")
+            return pd.DataFrame()
+        
         if not self.is_connected():
             if not self.connect():
                 logger.error("Failed to reconnect to MT5")
-                # Return mock data for demonstration when MT5 is not available
                 return self.generate_mock_data(timeframe, bars)
         
         try:
@@ -71,7 +93,7 @@ class MT5Bridge:
             
             if rates is None or len(rates) == 0:
                 logger.warning(f"No data received for {symbol} {timeframe}")
-                return self.generate_mock_data(timeframe, bars)
+                return pd.DataFrame()
             
             # Convert to DataFrame
             df = pd.DataFrame(rates)
@@ -81,9 +103,39 @@ class MT5Bridge:
             return df
         except Exception as e:
             logger.error(f"Error fetching data for {symbol} {timeframe}: {e}")
-            # Return mock data on error
-            return self.generate_mock_data(timeframe, bars)
+            return pd.DataFrame()
     
+    def _fetch_yf_data(self, symbol, timeframe, bars=100):
+        """Fetch data from Yahoo Finance"""
+        if not YF_AVAILABLE:
+            return pd.DataFrame()
+        try:
+            # Convert symbol to Yahoo Finance format
+            yf_symbol = self._convert_to_yf_symbol(symbol)
+            tf_map = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h", "H4": "1h", "D1": "1d"}
+            period_map = {"M1": "1d", "M5": "5d", "M15": "1mo", "H1": "6mo", "H4": "6mo", "D1": "1y", "W1": "2y"}
+            
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(period=period_map.get(timeframe, "1mo"), interval=tf_map.get(timeframe, "1h"))
+            df = df.tail(bars)
+            df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
+            df["tick_volume"] = df["volume"]
+            df["real_volume"] = df["volume"]
+            logger.info(f"Fetched {len(df)} bars from Yahoo Finance for {yf_symbol}")
+            return df
+        except Exception as e:
+            logger.error(f"Error fetching Yahoo Finance data: {e}")
+            return pd.DataFrame()
+
+    def _convert_to_yf_symbol(self, symbol):
+        """Convert MT5 symbol to Yahoo Finance symbol"""
+        yf_symbols = {
+            "ND100m": "^NDX", "NAS100": "^NDX", "NAS": "^NDX", "NDX": "^NDX",
+            "XAUUSD": "GC=F", "GOLD": "GC=F", "GC": "GC=F",
+            "BTCUSD": "BTC-USD", "BITCOIN": "BTC-USD", "BTC": "BTC-USD",
+        }
+        return yf_symbols.get(symbol, symbol)
+
     def generate_mock_data(self, timeframe, bars=100):
         """Generate mock data for demonstration when MT5 is not available"""
         logger.info(f"Generating mock data for {timeframe}")

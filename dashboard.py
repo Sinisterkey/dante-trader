@@ -17,7 +17,7 @@ import threading
 from typing import Dict, List, Any, Optional
 from telegram import Bot
 from agents import TradingAgents
-from config import *
+from config import INSTRUMENT, AVAILABLE_INSTRUMENTS
 from trade_logger import TradeLogger
 from performance_analytics import PerformanceAnalytics
 from risk_engine import RiskEngine
@@ -37,8 +37,6 @@ class TradingDashboard:
         self.performance_analytics = PerformanceAnalytics(self.trade_logger)
         self.risk_engine = RiskEngine(self.broker)  # Initialize with broker instance
         logger.info("Trading Dashboard initialized")
-    
-    def _start_systems(self):
         """Start all trading systems"""
         try:
             # Start position manager
@@ -133,118 +131,152 @@ class TradingDashboard:
     
     def render_dashboard(self):
         """Render the main dashboard"""
+        # Initialize session state for current symbol
+        if 'current_symbol' not in st.session_state:
+            st.session_state.current_symbol = INSTRUMENT
+        if 'market_analyses' not in st.session_state:
+            st.session_state.market_analyses = {}
+        if 'selected_symbols' not in st.session_state:
+            st.session_state.selected_symbols = [INSTRUMENT]  # Default to current symbol
+
         # Set page config
         st.set_page_config(
-            page_title="NAS100 Algorithmic Trading System",
+            page_title="Multi-Market Real-time Trading System",
             page_icon="📈",
             layout="wide",
-            initial_sidebar_state="expanded"
+            initial_sidebar_state="collapsed"
         )
         
-        # Custom CSS for better styling
+        # Custom CSS for better styling - more trading platform like
         st.markdown("""
         <style>
         .main-header {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: bold;
             color: #1f77b4;
             text-align: center;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .sub-header {
+            font-size: 1.1rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 1.5rem;
         }
         .metric-card {
             background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border-left: 4px solid #1f77b4;
+            padding: 0.75rem;
+            border-radius: 0.3rem;
+            border-left: 3px solid #1f77b4;
+            margin-bottom: 0.5rem;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            color: #666;
         }
         .signal-buy {
             background-color: #d4edda;
             color: #155724;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
+            padding: 0.75rem;
+            border-radius: 0.3rem;
             border-left: 4px solid #28a745;
+            text-align: center;
+            margin: 0.5rem 0;
         }
         .signal-sell {
             background-color: #f8d7da;
             color: #721c24;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
+            padding: 0.75rem;
+            border-radius: 0.3rem;
             border-left: 4px solid #dc3545;
+            text-align: center;
+            margin: 0.5rem 0;
         }
         .signal-neutral {
             background-color: #fff3cd;
             color: #856404;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
+            padding: 0.75rem;
+            border-radius: 0.3rem;
             border-left: 4px solid #ffc107;
+            text-align: center;
+            margin: 0.5rem 0;
         }
         .thought-process {
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
-            border-radius: 0.5rem;
+            border-radius: 0.3rem;
             padding: 1rem;
-            height: 400px;
+            height: 300px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
+        }
+        .stButton>button {
+            width: 100%;
+            margin: 0.25rem 0;
+        }
+        .buy-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+        }
+        .buy-btn:hover {
+            background-color: #218838;
+        }
+        .sell-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+        }
+        .sell-btn:hover {
+            background-color: #c82333;
+        }
+        .status-live {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-closed {
+            color: #dc3545;
+            font-weight: bold;
         }
         </style>
         """, unsafe_allow_html=True)
         
         # Header
-        st.markdown('<h1 class="main-header">📈 NAS100 Algorithmic Trading System</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="text-align: center; color: #666;">Powered by AI Agents & Advanced Analytics</p>', unsafe_allow_html=True)
+        st.markdown(f'<h1 class="main-header">📈 Multi-Market Trading System</h1>', unsafe_allow_html=True)
+        st.markdown('<p class="sub-header">Live Market Data • AI Agents • Parallel Analysis</p>', unsafe_allow_html=True)
         
-        # Control panel - ADD THIS BACK
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+        # Control panel - compact
+        col1, col2, col3, col4 = st.columns([1.5, 1, 1, 1.5])
         
         with col1:
-            if st.button("▶️ Start Analysis" if not st.session_state.get('is_running', False) else "⏸️ Stop Analysis"):
+            # Multi-symbol selector
+            selected_symbols = st.multiselect("Markets to Analyze", options=AVAILABLE_INSTRUMENTS,
+                                             default=st.session_state.get('selected_symbols', [INSTRUMENT]),
+                                             key="symbols_multiselect")
+            st.session_state.selected_symbols = selected_symbols
+        
+        with col2:
+            if st.button("▶️ Start All" if not st.session_state.get('is_running', False) else "⏸️ Stop All"):
                 st.session_state.is_running = not st.session_state.get('is_running', False)
                 if st.session_state.is_running:
-                    # Start background thread
-                    analysis_thread = threading.Thread(target=self._analysis_loop, daemon=True)
-                    analysis_thread.start()
                     st.success("Analysis started!")
                 else:
                     st.info("Analysis stopped.")
                 st.rerun()
         
-        with col2:
-            if st.button("🔄 Manual Analysis"):
-                with st.spinner("Performing analysis..."):
-                    analysis = self.trading_agents.analyze_and_recommend()
-                    analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
-                    st.session_state.last_analysis = analysis
-                    if 'analysis_history' not in st.session_state:
-                        st.session_state.analysis_history = []
-                    st.session_state.analysis_history.append(analysis)
-                    if len(st.session_state.analysis_history) > 100:
-                        st.session_state.analysis_history = st.session_state.analysis_history[-100:]
-                st.rerun()
-        
         with col3:
-            # Add forced analysis button
-            if st.button("🚀 Force Analysis (Ignore Session)"):
-                with st.spinner("Performing forced analysis..."):
-                    # Temporarily bypass session check for this analysis
-                    # We'll need to modify the agents to accept a force parameter
-                    # For now, we'll just call the regular analysis
-                    analysis = self.trading_agents.analyze_and_recommend()
-                    analysis['timestamp'] = datetime.now(timezone.utc).isoformat()
-                    # Add a flag to indicate this was forced
-                    analysis['forced'] = True
-                    st.session_state.last_analysis = analysis
-                    if 'analysis_history' not in st.session_state:
-                        st.session_state.analysis_history = []
-                    st.session_state.analysis_history.append(analysis)
-                    if len(st.session_state.analysis_history) > 100:
-                        st.session_state.analysis_history = st.session_state.analysis_history[-100:]
-                st.rerun()
+            if st.button("🔄 Analyze Now"):
+                with st.spinner("Analyzing markets..."):
+                    analyses = self._analyze_multiple_markets(st.session_state.selected_symbols)
+                    st.session_state.market_analyses = analyses
         
         with col4:
-            session_status = "🟢 Active" if self.trading_agents.market_intel.is_london_ny_overlap() else "🔴 Inactive"
-            st.metric("London/NY Session", session_status)
+            st.markdown(f"**Session:** {'🟢 LIVE' if self.trading_agents.market_intel.is_london_ny_overlap() else '🔴 CLOSED'}")
         
         # Initialize session state variables if they don't exist
         if 'last_analysis' not in st.session_state:
@@ -255,100 +287,288 @@ class TradingDashboard:
             st.session_state.is_running = False
         if 'telegram_alerts_sent' not in st.session_state:
             st.session_state.telegram_alerts_sent = set()
+        if 'last_trade_time' not in st.session_state:
+            st.session_state.last_trade_time = None
         
-        # Main layout
-        col1, col2 = st.columns([2, 1])
+        # Main layout - chart takes most space
+        col_chart, col_side = st.columns([3, 1])
         
-        with col1:
+        with col_chart:
             self._render_charting_window()
         
-        with col2:
+        with col_side:
+            st.subheader("💰 Trading Controls")
+            
+            # Current signal display
+            if 'last_analysis' in st.session_state and st.session_state.last_analysis is not None:
+                analysis = st.session_state.last_analysis
+                action = analysis.get('action', 'NO_TRADE')
+                confidence = analysis.get('confidence', 0)
+                
+                if action == 'BUY':
+                    st.markdown(f'<div class="signal-buy">🟢 BUY SIGNAL<br>Confidence: {confidence}%</div>', unsafe_allow_html=True)
+                elif action == 'SELL':
+                    st.markdown(f'<div class="signal-sell">🔴 SELL SIGNAL<br>Confidence: {confidence}%</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="signal-neutral">⚪ NO TRADE<br>Confidence: {confidence}%</div>', unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                col_buy, col_sell = st.columns(2)
+                
+                with col_buy:
+                    if st.button("🟢 BUY", key="buy_btn"):
+                        if analysis.get('action') == 'BUY' and analysis.get('confidence', 0) >= 60:
+                            with st.spinner("Executing BUY order..."):
+                                result = self.trading_agents.execute_signal(analysis)
+                                if result.get('success', False):
+                                    st.success("BUY order executed!")
+                                    st.session_state.last_trade_time = datetime.now(timezone.utc)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Order failed: {result.get('error', 'Unknown error')}")
+                        else:
+                            st.warning("No valid BUY signal or confidence too low")
+                
+                with col_sell:
+                    if st.button("🔴 SELL", key="sell_btn"):
+                        if analysis.get('action') == 'SELL' and analysis.get('confidence', 0) >= 60:
+                            with st.spinner("Executing SELL order..."):
+                                result = self.trading_agents.execute_signal(analysis)
+                                if result.get('success', False):
+                                    st.success("SELL order executed!")
+                                    st.session_state.last_trade_time = datetime.now(timezone.utc)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Order failed: {result.get('error', 'Unknown error')}")
+                        else:
+                            st.warning("No valid SELL signal or confidence too low")
+                
+                if st.session_state.last_trade_time:
+                    time_diff = (datetime.now(timezone.utc) - st.session_state.last_trade_time).total_seconds()
+                    if time_diff < 60:
+                        st.caption(f"Last trade: {int(time_diff)}s ago")
+                    elif time_diff < 3600:
+                        st.caption(f"Last trade: {int(time_diff/60)}m ago")
+                    else:
+                        st.caption(f"Last trade: {int(time_diff/3600)}h ago")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
             self._render_agent_thought_process()
-        
-        # Second row
-        col3, col4 = st.columns([1, 1])
-        
-        with col3:
-            self._render_performance_metrics()
-        
-        with col4:
-            self._render_risk_status()
-        
-        # Third row - full width
-        self._render_trade_history()
         
         # Footer
         st.markdown("---")
         st.markdown(
-            f'<p style="text-align: center; color: #888; font-size: 0.9rem;">'
-            f'NAS100 Algorithmic Trading System | Last updated: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC'
+            f'<p style="text-align: center; color: #888; font-size: 0.85rem;">'
+            f'Multi-Market Trading System | Last updated: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC'
             f'</p>', 
             unsafe_allow_html=True
         )
+        
+        # Auto-analysis for selected markets (background, no flicker)
+        if st.session_state.get('is_running', False):
+            st.session_state.market_analyses = self._analyze_multiple_markets(st.session_state.selected_symbols)
     
+    def _analyze_multiple_markets(self, symbols: List[str]) -> Dict[str, Any]:
+        """Analyze multiple markets in parallel and store results separately"""
+        analyses = {}
+        for symbol in symbols:
+            try:
+                df_m15 = self.broker.get_historical_data(symbol, "M15", BARS_TO_FETCH)
+                df_h4 = self.broker.get_historical_data(symbol, "H4", BARS_TO_FETCH)
+                
+                if df_m15 is None or df_h4 is None or df_m15.empty or df_h4.empty:
+                    analyses[symbol] = {"error": "No data available"}
+                    continue
+                
+                from market_intelligence import MarketIntelligence
+                from ml_integration import MLIntegration
+                mi = MarketIntelligence()
+                ml = MLIntegration()
+                
+                market_data = mi.generate_signal(df_m15, df_h4)
+                market_regime = mi.detect_market_regime(df_m15)
+                
+                base_signal = {
+                    'action': market_data.get('signal'),
+                    'confidence': market_data.get('confidence', 0),
+                }
+                
+                if base_signal['action'] in ['BUY', 'SELL'] and base_signal['confidence'] > 0:
+                    market_context = {
+                        'rsi': market_data.get('rsi', 50.0),
+                        'macd': market_data.get('macd', {}),
+                        'hour_of_day': datetime.now(timezone.utc).hour,
+                        'day_of_week': datetime.now(timezone.utc).weekday(),
+                    }
+                    enhanced = ml.enhance_signal(base_signal, market_context)
+                    final_conf = enhanced.get('enhanced_confidence', base_signal['confidence'])
+                    action = base_signal['action'] if final_conf >= 60 else 'NO_TRADE'
+                    confidence = final_conf if final_conf >= 60 else 0
+                else:
+                    action = 'NO_TRADE'
+                    confidence = 0
+                
+                analyses[symbol] = {
+                    "action": action,
+                    "confidence": round(confidence, 1),
+                    "market_data": market_data,
+                    "market_regime": market_regime,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            except Exception as e:
+                logger.error(f"Error analyzing {symbol}: {e}")
+                analyses[symbol] = {"error": str(e)}
+        
+        return analyses
+
     def _render_charting_window(self):
-        """Render the interactive charting window"""
-        st.subheader("📊 Interactive Charting Window")
+        """Render the charting window with real-time price data for all selected markets"""
+        symbols = st.session_state.get('selected_symbols', [INSTRUMENT])
         
-        # Chart controls
-        col1, col2, col3 = st.columns([1, 1, 2])
-        
-        with col1:
-            timeframe = st.selectbox(
-                "Timeframe",
-                options=["M1", "M5", "M15", "M30", "H1", "H4", "D1"],
-                index=2,  # Default to M15
-                key="chart_timeframe"
-            )
-        
-        with col2:
-            chart_type = st.selectbox(
-                "Chart Type",
-                options=["Candlestick", "OHLC", "Line"],
-                index=0,
-                key="chart_type"
-            )
-        
-        with col3:
-            show_indicators = st.multiselect(
-                "Indicators",
-                options=["SMA20", "SMA50", "EMA20", "EMA50", "RSI", "MACD", "Bollinger Bands"],
-                default=["SMA20", "SMA50"],
-                key="chart_indicators"
-            )
-        
-        # Get market data for charting
-        # In a real implementation, this would come from the broker
-        # For now, we'll use mock data or try to get real data
-        chart_data = self._get_chart_data(timeframe, 100)  # 100 bars
-        
-        if chart_data is not None and not chart_data.empty:
-            # Create the chart
-            fig = self._create_chart(chart_data, chart_type, show_indicators)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No chart data available. Please check your data connection.")
+        # Create tabs for each symbol
+        if len(symbols) > 0:
+            tabs = st.tabs(symbols)
+            for i, symbol in enumerate(symbols):
+                with tabs[i]:
+                    chart_data = self._get_chart_data(symbol, "M1", 100)
+                    
+                    if chart_data is not None and not chart_data.empty:
+                        fig = self._create_real_time_chart(chart_data, symbol)
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                        
+                        analysis = st.session_state.get('market_analyses', {}).get(symbol, {})
+                        last_price = chart_data['close'].iloc[-1] if len(chart_data) > 0 else 0
+                        prev_price = chart_data['close'].iloc[-2] if len(chart_data) > 1 else last_price
+                        price_change = last_price - prev_price
+                        price_change_pct = (price_change / prev_price * 100) if prev_price != 0 else 0
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric(f"{symbol} Price", f"{last_price:.2f}", 
+                                     f"{price_change:+.2f} ({price_change_pct:+.2f}%)")
+                        with col2:
+                            st.metric("Signal", analysis.get('action', 'NO_TRADE'))
+                        with col3:
+                            st.metric("Confidence", f"{analysis.get('confidence', 0)}%")
+                    else:
+                        st.error(f"Unable to load chart data for {symbol}. Please check your connection.")
     
-    def _get_chart_data(self, timeframe: str, bars: int = 100) -> Optional[pd.DataFrame]:
+    def _create_real_time_chart(self, df: pd.DataFrame, symbol: str = "NAS100") -> go.Figure:
+        """Create a real-time chart (non-interactive)"""
+        try:
+            fig = make_subplots(
+                rows=2, cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.03,
+                subplot_titles=(f'{symbol} Real-time Price', 'Volume'),
+                row_width=[0.7, 0.3]
+            )
+            
+            # Main price chart - candlestick
+            fig.add_trace(
+                go.Candlestick(
+                    x=df.index,
+                    open=df['open'],
+                    high=df['high'],
+                    low=df['low'],
+                    close=df['close'],
+                    name="NAS100",
+                    increasing_line_color='green',
+                    decreasing_line_color='red'
+                ),
+                row=1, col=1
+            )
+            
+            # Add SMA20 and SMA50
+            sma20 = df['close'].rolling(window=20).mean()
+            sma50 = df['close'].rolling(window=50).mean()
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=sma20,
+                    mode='lines',
+                    name='SMA20',
+                    line=dict(color='blue', width=1)
+                ),
+                row=1, col=1
+            )
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=sma50,
+                    mode='lines',
+                    name='SMA50',
+                    line=dict(color='purple', width=1)
+                ),
+                row=1, col=1
+            )
+            
+            # Volume chart
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=df['volume'],
+                    name='Volume',
+                    marker_color='rgba(158,202,225,0.6)',
+                    marker_line_color='rgb(8,48,107)',
+                    marker_line_width=1
+                ),
+                row=2, col=1
+            )
+            
+            # Update layout
+            fig.update_layout(
+                title=f"{symbol} Real-time Price Action (1-minute chart)",
+                xaxis_rangeslider_visible=False,
+                height=500,
+                showlegend=True,
+                plot_bgcolor='white',
+                paper_bgcolor='white'
+            )
+            
+            # Update y-axis labels
+            fig.update_yaxes(title_text="Price (USD)", row=1, col=1)
+            fig.update_yaxes(title_text="Volume", row=2, col=1)
+            
+            # Remove range slider and make it non-interactive
+            fig.update_layout(dragmode=False)
+            
+            return fig
+            
+        except Exception as e:
+            logger.error(f"Error creating real-time chart: {e}")
+            # Return empty figure on error
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Error loading chart",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, xanchor='center', yanchor='middle',
+                showarrow=False,
+                font=dict(size=16, color="red")
+            )
+            return fig
+    
+    def _get_chart_data(self, symbol: str, timeframe: str, bars: int = 100) -> Optional[pd.DataFrame]:
         """Get chart data for visualization"""
         try:
-            # Try to get data from the broker integration
-            # In a real system, this would come from the broker
-            from broker_integration import MT5Broker
-            broker = MT5Broker()
-            
-            # Map timeframe to our internal representation
-            df = broker.get_historical_data(INSTRUMENT, timeframe, bars)
+            df = self.broker.get_historical_data(symbol, timeframe, bars)
             
             if df is None or df.empty:
-                # Generate mock data for demonstration
-                df = self._generate_mock_chart_data(timeframe, bars)
+                logger.warning(f"No data received for {symbol} {timeframe}")
+                return pd.DataFrame()
+            
+            # Set time index for chart
+            if 'time' in df.columns:
+                df = df.set_index('time')
             
             return df
             
         except Exception as e:
             logger.error(f"Error getting chart data: {e}")
-            return self._generate_mock_chart_data(timeframe, bars)
+            return pd.DataFrame()
     
     def _generate_mock_chart_data(self, timeframe: str, bars: int = 100) -> pd.DataFrame:
         """Generate mock chart data for demonstration"""
@@ -414,216 +634,77 @@ class TradingDashboard:
             logger.error(f"Error generating mock chart data: {e}")
             return pd.DataFrame()
     
-    def _create_chart(self, df: pd.DataFrame, chart_type: str, indicators: List[str]) -> go.Figure:
-        """Create the interactive chart"""
-        try:
-            # Create subplots: main chart and volume
-            fig = make_subplots(
-                rows=2, cols=1,
-                shared_xaxes=True,
-                vertical_spacing=0.03,
-                subplot_titles=('NAS100 Price Chart', 'Volume'),
-                row_width=[0.7, 0.3]
-            )
-            
-            # Main price chart
-            if chart_type == "Candlestick":
-                fig.add_trace(
-                    go.Candlestick(
-                        x=df.index,
-                        open=df['open'],
-                        high=df['high'],
-                        low=df['low'],
-                        close=df['close'],
-                        name="Price"
-                    ),
-                    row=1, col=1
-                )
-            elif chart_type == "OHLC":
-                fig.add_trace(
-                    go.Ohlc(
-                        x=df.index,
-                        open=df['open'],
-                        high=df['high'],
-                        low=df['low'],
-                        close=df['close'],
-                        name="Price"
-                    ),
-                    row=1, col=1
-                )
-            elif chart_type == "Line":
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index,
-                        y=df['close'],
-                        mode='lines',
-                        name='Close',
-                        line=dict(color='blue', width=2)
-                    ),
-                    row=1, col=1
-                )
-            
-            # Add indicators
-            colors = ['orange', 'purple', 'brown', 'pink', 'gray', 'black', 'red']
-            color_idx = 0
-            
-            if "SMA20" in indicators:
-                sma20 = df['close'].rolling(window=20).mean()
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index,
-                        y=sma20,
-                        mode='lines',
-                        name='SMA20',
-                        line=dict(color=colors[color_idx % len(colors)], width=1)
-                    ),
-                    row=1, col=1
-                )
-                color_idx += 1
-            
-            if "SMA50" in indicators:
-                sma50 = df['close'].rolling(window=50).mean()
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index,
-                        y=sma50,
-                        mode='lines',
-                        name='SMA50',
-                        line=dict(color=colors[color_idx % len(colors)], width=1)
-                    ),
-                    row=1, col=1
-                )
-                color_idx += 1
-            
-            if "EMA20" in indicators:
-                ema20 = df['close'].ewm(span=20, adjust=False).mean()
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index,
-                        y=ema20,
-                        mode='lines',
-                        name='EMA20',
-                        line=dict(color=colors[color_idx % len(colors)], width=1)
-                    ),
-                    row=1, col=1
-                )
-                color_idx += 1
-            
-            if "EMA50" in indicators:
-                ema50 = df['close'].ewm(span=50, adjust=False).mean()
-                fig.add_trace(
-                    go.Scatter(
-                        x=df.index,
-                        y=ema50,
-                        mode='lines',
-                        name='EMA50',
-                        line=dict(color=colors[color_idx % len(colors)], width=1)
-                    ),
-                    row=1, col=1
-                )
-                color_idx += 1
-            
-            # Volume chart
-            fig.add_trace(
-                go.Bar(
-                    x=df.index,
-                    y=df['volume'],
-                    name='Volume',
-                    marker_color='lightblue'
-                ),
-                row=2, col=1
-            )
-            
-            # Update layout
-            fig.update_layout(
-                title=f"NAS100 - {timeframe} Chart",
-                xaxis_rangeslider_visible=False,
-                height=600,
-                showlegend=True
-            )
-            
-            # Update y-axis labels
-            fig.update_yaxes(title_text="Price (USD)", row=1, col=1)
-            fig.update_yaxes(title_text="Volume", row=2, col=1)
-            
-            return fig
-            
-        except Exception as e:
-            logger.error(f"Error creating chart: {e}")
-            # Return empty figure on error
-            fig = go.Figure()
-            fig.add_annotation(
-                text="Error loading chart",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5, xanchor='center', yanchor='middle',
-                showarrow=False,
-                font=dict(size=16, color="red")
-            )
-            return fig
-    
     def _render_agent_thought_process(self):
         """Render the agent thought process monitor"""
         st.subheader("🧠 Agent Thought Process Monitor")
         
-        # Get latest analysis from trading agents
-        try:
-            # Get analysis from agents
-            analysis = self.trading_agents.analyze_and_recommend()
-            
-            # Create thought process display
-            thought_process = []
-            
-            # Add timestamp
-            thought_process.append(f"[{analysis.get('timestamp', 'N/A')}] Analysis started")
-            
-            # Add market intelligence thoughts
-            if 'market_data' in analysis:
-                market_data = analysis['market_data']
-                thought_process.append(f"[Market Intelligence] {market_data.get('reason', 'No reason provided')}")
-                thought_process.append(f"[Market Intelligence] Signal: {market_data.get('signal', 'NONE')} "
-                                     f"(Confidence: {market_data.get('confidence', 0)}%)")
-                thought_process.append(f"[Market Intelligence] Trend: M15={market_data.get('m15_trend', 'N/A')}, "
-                                     f"H4={market_data.get('h4_trend', 'N/A')}, Aligned: {market_data.get('trend_aligned', False)}")
-                thought_process.append(f"[Market Intelligence] Session: {market_data.get('session', 'UNKNOWN')}")
-                thought_process.append(f"[Market Intelligence] Regime: {market_data.get('market_regime', 'UNKNOWN')}")
-            
-            # Add ML enhancement thoughts
-            if 'ml_data' in analysis:
-                ml_data = analysis['ml_data']
-                thought_process.append(f"[ML Enhancement] Original confidence: {ml_data.get('original_confidence', 0)}%")
-                thought_process.append(f"[ML Enhancement] ML success probability: {ml_data.get('ml_confidence', 0):.1f}%")
-                thought_process.append(f"[ML Enhancement] Enhanced confidence: {ml_data.get('enhanced_confidence', 0):.1f}%")
-                thought_process.append(f"[ML Enhancement] Expected P&L: {ml_data.get('ml_expected_profit', 0):.2f}")
-            
-            # Add final decision thoughts
-            thought_process.append(f"[Decision Engine] Final action: {analysis.get('action', 'N/A')}")
-            thought_process.append(f"[Decision Engine] Final confidence: {analysis.get('confidence', 0)}%")
-            thought_process.append(f"[Decision Engine] Reasoning: {analysis.get('reasoning', 'No reasoning provided')}")
-            
-            # Add validation checks
-            if 'validation_checks' in analysis:
-                checks = analysis['validation_checks']
-                thought_process.append(f"[Validation] Session valid: {checks.get('session_valid', False)}")
-                thought_process.append(f"[Validation] Trend aligned: {checks.get('trend_aligned', False)}")
-                thought_process.append(f"[Validation] Risk/reward adequate: {checks.get('risk_reward_adequate', False)}")
-            
-            # Display in text area
-            thought_text = "\n".join(thought_process)
-            st.markdown(f'<div class="thought-process">{thought_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
-            
-            # Display signal status prominently
-            action = analysis.get('action', 'NO_TRADE')
-            if action == 'BUY':
-                st.markdown('<div class="signal-buy"><strong>🟢 BUY SIGNAL</strong></div>', unsafe_allow_html=True)
-            elif action == 'SELL':
-                st.markdown('<div class="signal-sell"><strong>🔴 SELL SIGNAL</strong></div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="signal-neutral"><strong>⚪ NO TRADE</strong></div>', unsafe_allow_html=True)
-                
-        except Exception as e:
-            logger.error(f"Error rendering agent thought process: {e}")
-            st.error(f"Error loading agent thoughts: {str(e)}")
-            st.markdown('<div class="thought-process">Error loading thought process</div>', unsafe_allow_html=True)
+        # Get latest analysis from session state (updated by background loop)
+        if 'last_analysis' in st.session_state and st.session_state.last_analysis is not None:
+            analysis = st.session_state.last_analysis
+            # Check how old the analysis is
+            try:
+                analysis_time = datetime.fromisoformat(analysis['timestamp'].replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                age_seconds = (now - analysis_time).total_seconds()
+                if age_seconds > 60:  # older than 60 seconds
+                    st.warning(f"Analysis is {age_seconds:.0f} seconds old. Consider restarting the analysis for updated data.")
+                else:
+                    st.success(f"Analysis updated {age_seconds:.0f} seconds ago")
+            except:
+                st.info("Analysis timestamp unavailable")
+        else:
+            st.info("No analysis available yet. Start the analysis to see the agent's thought process.")
+            return
+        
+        # Create thought process display
+        thought_process = []
+        
+        # Add timestamp
+        thought_process.append(f"[{analysis.get('timestamp', 'N/A')}] Analysis started")
+        
+        # Add market intelligence thoughts
+        if 'market_data' in analysis:
+            market_data = analysis['market_data']
+            thought_process.append(f"[Market Intelligence] {market_data.get('reason', 'No reason provided')}")
+            thought_process.append(f"[Market Intelligence] Signal: {market_data.get('signal', 'NONE')} "
+                                 f"(Confidence: {market_data.get('confidence', 0)}%)")
+            thought_process.append(f"[Market Intelligence] Trend: M15={market_data.get('m15_trend', 'N/A')}, "
+                                 f"H4={market_data.get('h4_trend', 'N/A')}, Aligned: {market_data.get('trend_aligned', False)}")
+            thought_process.append(f"[Market Intelligence] Session: {market_data.get('session', 'UNKNOWN')}")
+            thought_process.append(f"[Market Intelligence] Regime: {market_data.get('market_regime', 'UNKNOWN')}")
+        
+        # Add ML enhancement thoughts
+        if 'ml_data' in analysis:
+            ml_data = analysis['ml_data']
+            thought_process.append(f"[ML Enhancement] Original confidence: {ml_data.get('original_confidence', 0)}%")
+            thought_process.append(f"[ML Enhancement] ML success probability: {ml_data.get('ml_confidence', 0):.1f}%")
+            thought_process.append(f"[ML Enhancement] Enhanced confidence: {ml_data.get('enhanced_confidence', 0):.1f}%")
+            thought_process.append(f"[ML Enhancement] Expected P&L: {ml_data.get('ml_expected_profit', 0):.2f}")
+        
+        # Add final decision thoughts
+        thought_process.append(f"[Decision Engine] Final action: {analysis.get('action', 'N/A')}")
+        thought_process.append(f"[Decision Engine] Final confidence: {analysis.get('confidence', 0)}%")
+        thought_process.append(f"[Decision Engine] Reasoning: {analysis.get('reasoning', 'No reasoning provided')}")
+        
+        # Add validation checks
+        if 'validation_checks' in analysis:
+            checks = analysis['validation_checks']
+            thought_process.append(f"[Validation] Session valid: {checks.get('session_valid', False)}")
+            thought_process.append(f"[Validation] Trend aligned: {checks.get('trend_aligned', False)}")
+            thought_process.append(f"[Validation] Risk/reward adequate: {checks.get('risk_reward_adequate', False)}")
+        
+        # Display in text area
+        thought_text = "\n".join(thought_process)
+        st.markdown(f'<div class="thought-process">{thought_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+        
+        # Display signal status prominently
+        action = analysis.get('action', 'NO_TRADE')
+        if action == 'BUY':
+            st.markdown('<div class="signal-buy"><strong>🟢 BUY SIGNAL</strong></div>', unsafe_allow_html=True)
+        elif action == 'SELL':
+            st.markdown('<div class="signal-sell"><strong>🔴 SELL SIGNAL</strong></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="signal-neutral"><strong>⚪ NO TRADE</strong></div>', unsafe_allow_html=True)
     
     def _render_performance_metrics(self):
         """Render performance metrics panel"""

@@ -1,4 +1,9 @@
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
 import pandas as pd
 import logging
 from typing import Optional, Dict, List
@@ -16,6 +21,10 @@ class MT5Connector:
 
     def connect(self) -> bool:
         """Connect to MT5."""
+        if not MT5_AVAILABLE:
+            logger.warning("MT5 not available - running in demo mode")
+            self.connected = True
+            return True
         try:
             if not mt5.initialize(login=int(MT5_LOGIN), password=MT5_PASSWORD, server=MT5_SERVER):
                 logger.error(f"MT5 initialization failed: {mt5.last_error()}")
@@ -32,11 +41,12 @@ class MT5Connector:
     def disconnect(self):
         """Disconnect from MT5."""
         try:
-            mt5.shutdown()
+            if MT5_AVAILABLE:
+                mt5.shutdown()
             self.connected = False
-            logger.info("Disconnected from MT5")
+            logger.info("Disconnected from broker")
         except Exception as e:
-            logger.error(f"Error disconnecting from MT5: {e}")
+            logger.error(f"Error disconnecting from broker: {e}")
 
     def is_connected(self) -> bool:
         """Check if connected to MT5."""
@@ -55,6 +65,10 @@ class MT5Connector:
         Returns:
             DataFrame with OHLCV data, or None if failed
         """
+        if not MT5_AVAILABLE:
+            logger.info(f"Demo mode: returning mock data for {symbol} {timeframe}")
+            return self._generate_mock_data(symbol, timeframe, bars)
+        
         try:
             if not self.is_connected():
                 logger.error("Not connected to MT5")
@@ -99,10 +113,60 @@ class MT5Connector:
 
         except Exception as e:
             logger.error(f"Error fetching OHLCV for {symbol}: {e}")
-            # Attempt to reconnect
             self.disconnect()
             self.connect()
             return None
+    
+    def _generate_mock_data(self, symbol: str, timeframe: int, bars: int = 100) -> pd.DataFrame:
+        """Generate mock OHLCV data for demo mode."""
+        from datetime import datetime
+        import numpy as np
+        
+        now = datetime.now()
+        if timeframe == 5:
+            delta = pd.Timedelta(minutes=5)
+        elif timeframe == 15:
+            delta = pd.Timedelta(minutes=15)
+        elif timeframe == 30:
+            delta = pd.Timedelta(minutes=30)
+        elif timeframe == 240:
+            delta = pd.Timedelta(hours=4)
+        elif timeframe == 1440:
+            delta = pd.Timedelta(days=1)
+        else:
+            delta = pd.Timedelta(minutes=15)
+
+        times = [now - i * delta for i in range(bars)]
+        times.reverse()
+
+        base_price = 18000.0
+        data = []
+
+        for i, t in enumerate(times):
+            if i == 0:
+                open_price = base_price
+            else:
+                open_price = data[-1]['close']
+
+            volatility = 0.01
+            close_price = open_price * (1 + np.random.normal(0, volatility))
+            high_price = max(open_price, close_price) * (1 + abs(np.random.normal(0, volatility/2)))
+            low_price = min(open_price, close_price) * (1 - abs(np.random.normal(0, volatility/2)))
+            volume = np.random.randint(1000, 10000)
+
+            data.append({
+                'time': int(t.timestamp()),
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': close_price,
+                'tick_volume': volume,
+            })
+
+        df = pd.DataFrame(data)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df['volume'] = df['tick_volume']
+        return df[['time', 'open', 'high', 'low', 'close', 'volume']]
 
     def fetch_multi_timeframe(self, symbol: str, bars: int = 100) -> Dict[str, pd.DataFrame]:
         """Fetch OHLCV data for multiple timeframes.

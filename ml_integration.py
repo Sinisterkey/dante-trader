@@ -320,8 +320,6 @@ class MLIntegration:
         return self.profit_feature_importance
 
     def online_learn_from_trade(self, trade_data: Dict[str, Any]) -> Dict[str, Any]:
-
-    def online_learn_from_trade(self, trade_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update ML models with a new trade outcome (online learning)"""
         try:
             # Check if we have minimum required models
