@@ -56,14 +56,13 @@ def render_backtest():
             display_backtest_results(results, symbol)
 
 
-def run_backtest(symbol: str, days: int, timeframe: str) -> Dict[str, Any]:
-    """Run backtest for given symbol and period"""
+"""Run backtest for given symbol and period"""
     try:
         from broker_integration import MT5Broker
         from market_intelligence import MarketIntelligence
         
         broker = MT5Broker()
-        bars_needed = min(days * 10, 1000)
+        bars_needed = min(days * 24 * 4 if timeframe == "H1" else days * 24 * 2 if timeframe == "M30" else days * 24 if timeframe == "M15" else days * 6, 2000)
         
         df = broker.get_historical_data(symbol, timeframe, bars_needed)
         
@@ -81,53 +80,59 @@ def run_backtest(symbol: str, days: int, timeframe: str) -> Dict[str, Any]:
         total_pnl = 0.0
         total_trades = 0
         
-        for i in range(50, len(df) - 1):
+        for i in range(50, len(df) - 5):
             try:
                 chunk = df.iloc[max(0, i-50):i]
-                next_price = df['close'].iloc[i+1]
-                current_price = df['close'].iloc[i]
-                
-                swing_high, swing_low = mi.calculate_swing_levels(chunk)
                 sma = mi.calculate_sma(chunk)
-                atr = mi.calculate_atr(chunk)
                 
-                if None in [swing_high, swing_low, sma, atr]:
+                if sma is None:
                     continue
                 
+                current_price = df['close'].iloc[i]
+                next_prices = df['close'].iloc[i+1:i+5]
+                
+                if len(next_prices) == 0:
+                    continue
+                
+                bullish = current_price > sma
+                bearish = current_price < sma
+                
                 signal = None
-                if current_price > swing_high:
+                direction = 0
+                if bullish and df['close'].iloc[i] > df['high'].iloc[i-1]:
                     signal = "BUY"
-                elif current_price < swing_low:
+                    direction = 1
+                elif bearish and df['close'].iloc[i] < df['low'].iloc[i-1]:
                     signal = "SELL"
+                    direction = -1
                 
                 if signal:
-                    move = abs(next_price - current_price)
-                    pnl = move if signal == "BUY" else -move
+                    future_move = (next_prices.iloc[-1] - current_price) * direction
                     signals.append({
-                        "time": df.index[i],
+                        "time": str(df.index[i])[:19],
                         "signal": signal,
-                        "entry": current_price,
-                        "exit": next_price,
-                        "pnl": pnl
+                        "entry": round(current_price, 2),
+                        "exit": round(next_prices.iloc[-1], 2),
+                        "pnl": round(future_move, 2)
                     })
-                    if pnl > 0:
+                    if future_move > 0:
                         wins += 1
                     else:
                         losses += 1
-                    total_pnl += pnl
+                    total_pnl += future_move
                     total_trades += 1
             except Exception:
                 continue
         
         return {
             "symbol": symbol,
-            "signals": signals,
+            "signals": signals[-50:],
             "total_trades": total_trades,
             "wins": wins,
             "losses": losses,
             "win_rate": wins / total_trades if total_trades > 0 else 0,
-            "total_pnl": total_pnl,
-            "avg_pnl": total_pnl / total_trades if total_trades > 0 else 0
+            "total_pnl": round(total_pnl, 2),
+            "avg_pnl": round(total_pnl / total_trades, 2) if total_trades > 0 else 0
         }
     except Exception as e:
         logger.error(f"Backtest error: {e}")
