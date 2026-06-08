@@ -56,7 +56,8 @@ def render_backtest():
             display_backtest_results(results, symbol)
 
 
-"""Run backtest for given symbol and period"""
+def run_backtest(symbol: str, days: int, timeframe: str) -> Dict[str, Any]:
+    """Run backtest for given symbol and period"""
     try:
         from broker_integration import MT5Broker
         from market_intelligence import MarketIntelligence
